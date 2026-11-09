@@ -44,6 +44,8 @@ import re
 
 from collections.abc import MutableMapping, MutableSet
 from functools import partial
+from itertools import groupby
+from operator import itemgetter
 from urllib.parse import urljoin
 
 from .. import etree
@@ -321,9 +323,9 @@ class HtmlMixin:
         if self.tail:
             previous = self.getprevious()
             if previous is None:
-                parent.text = (parent.text or '') + self.tail
+                parent._append_text(self.tail)
             else:
-                previous.tail = (previous.tail or '') + self.tail
+                previous._append_tail(self.tail)
         parent.remove(self)
 
     def drop_tag(self):
@@ -344,19 +346,21 @@ class HtmlMixin:
         if self.text and isinstance(self.tag, str):
             # not a Comment, etc.
             if previous is None:
-                parent.text = (parent.text or '') + self.text
+                parent._append_text(self.text)
             else:
-                previous.tail = (previous.tail or '') + self.text
+                previous._append_tail(self.text)
         if self.tail:
             if len(self):
-                last = self[-1]
-                last.tail = (last.tail or '') + self.tail
+                self[-1]._append_tail(self.tail)
             elif previous is None:
-                parent.text = (parent.text or '') + self.tail
+                parent._append_text(self.tail)
             else:
-                previous.tail = (previous.tail or '') + self.tail
-        index = parent.index(self)
-        parent[index:index+1] = self[:]
+                previous._append_tail(self.tail)
+        # Moving the children one by one (together with their tails) is O(1)
+        # per child, whereas index() and slice assignment are O(siblings).
+        for child in self[:]:
+            self.addprevious(child)
+        parent.remove(self)
 
     def find_rel_links(self, rel):
         """
@@ -598,22 +602,47 @@ class HtmlMixin:
         elif resolve_base_href:
             self.resolve_base_href()
 
-        for el, attrib, link, pos in self.iterlinks():
-            new_link = link_repl_func(link.strip())
-            if new_link == link:
-                continue
-            if new_link is None:
-                # Remove the attribute or element content
-                if attrib is None:
-                    el.text = ''
-                else:
-                    del el.attrib[attrib]
+        for (el, attrib), links in groupby(self.iterlinks(), key=itemgetter(0, 1)):
+            if attrib is None or attrib == 'style':
+                # <style> text and "style" attribute: the links of one value
+                # are reported last to first.  Rebuild the value once,
+                # instead of once per link.
+                value = el.text if attrib is None else el.get(attrib)
+                end = len(value)
+                chunks = []  # replacements and the text following them, reversed
+                removed = False
+                for _, _, link, pos in links:
+                    new_link = link_repl_func(link.strip())
+                    if removed or new_link == link:
+                        continue
+                    if new_link is None:
+                        # Remove the attribute or element content
+                        removed = True
+                        if attrib is None:
+                            el.text = ''
+                        else:
+                            del el.attrib[attrib]
+                        continue
+                    chunks.append(value[pos+len(link):end])
+                    chunks.append(new_link)
+                    end = pos
+                if chunks and not removed:
+                    new = value[:end] + ''.join(reversed(chunks))
+                    if attrib is None:
+                        el.text = new
+                    else:
+                        el.set(attrib, new)
                 continue
 
-            if attrib is None:
-                new = el.text[:pos] + new_link + el.text[pos+len(link):]
-                el.text = new
-            else:
+            for _, _, link, pos in links:
+                new_link = link_repl_func(link.strip())
+                if new_link == link:
+                    continue
+                if new_link is None:
+                    # Remove the attribute
+                    del el.attrib[attrib]
+                    continue
+
                 cur = el.get(attrib)
                 if not pos and len(cur) == len(link):
                     new = new_link  # most common case

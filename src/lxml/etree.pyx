@@ -1189,6 +1189,16 @@ cdef public class _Element [ type LxmlElementType, object LxmlElement ]:
         #def __del__(self):
         #    _setTailText(self._c_node, None)
 
+    def _append_text(self, value):
+        """Private helper for lxml.html: append text to ``.text`` in place."""
+        _assertValidNode(self)
+        _appendText(self._c_node, value, 0)
+
+    def _append_tail(self, value):
+        """Private helper for lxml.html: append text to ``.tail`` in place."""
+        _assertValidNode(self)
+        _appendText(self._c_node, value, 1)
+
     # not in ElementTree, read-only
     @property
     def prefix(self):
