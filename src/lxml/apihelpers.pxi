@@ -801,12 +801,12 @@ cdef int _appendText(xmlNode* c_node, value, bint tail) except -1:
     if utf8_value is None:
         text = (_collectText(c_text) or '') + value
         if tail:
-            return _setTailText(c_node, text)
-        return _setNodeText(c_node, text)
-
-    if tree.xmlTextConcat(
-            c_text, _xcstr(utf8_value), python.PyBytes_GET_SIZE(utf8_value)) < 0:
-        raise MemoryError()
+            _setTailText(c_node, text)
+        else:
+            _setNodeText(c_node, text)
+    else:
+        if tree.xmlTextConcat(c_text, _xcstr(utf8_value), <int> len(utf8_value)) < 0:
+            raise MemoryError()
     return 0
 
 cdef bytes _resolveQNameText(_Element element, value):
