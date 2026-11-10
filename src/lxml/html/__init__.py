@@ -622,7 +622,7 @@ class HtmlMixin:
                             el.text = ''
                         else:
                             del el.attrib[attr_name]
-                        continue
+                        break
                     chunks.append(value[pos+len(link):end])
                     chunks.append(new_link)
                     end = pos
