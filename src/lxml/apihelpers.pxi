@@ -795,7 +795,7 @@ cdef int _appendText(xmlNode* c_node, value, bint tail) except -1:
             _textNodeOrSkip(c_text.next) is NULL:
         utf8_value = _utf8(value)
         # xmlTextConcat() uses int lengths for the new and the combined text.
-        if python.PyBytes_GET_SIZE(utf8_value) > limits.INT_MAX - tree.xmlStrlen(c_text.content):
+        if len(utf8_value) > limits.INT_MAX - tree.xmlStrlen(c_text.content):
             utf8_value = None
 
     if utf8_value is None:
