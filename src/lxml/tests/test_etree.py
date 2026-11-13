@@ -20,6 +20,7 @@ import pathlib
 import shutil
 import tempfile
 import textwrap
+import timeit
 import zlib
 import gzip
 
@@ -4976,6 +4977,68 @@ class ETreeOnlyTestCase(HelperTestCase):
         gc.collect()
         self.assertEqual(len(root), 1)
         self.assertEqual(root[0].tag, 'child')
+
+
+    @unittest.skipUnless(sys.implementation.name == 'cpython',
+                         "requires immediate proxy destruction")
+    def test_child_proxy_release_with_cdata_scaling(self):
+        times = []
+        for count in (1, 10000):
+            root = etree.XML(
+                '<root><child>' + 'text<![CDATA[text]]>' * count + '</child></root>',
+                etree.XMLParser(strip_cdata=False))
+
+            def access_child():
+                root[0]
+
+            self.assertEqual(root[0].tag, 'child')
+            times.append(self._best_time(access_child))
+
+        # Releasing a child proxy must not scan all of its text/CDATA children.
+        self.assertLess(times[1], 8 * times[0], times)
+
+    def _assert_deep_tree_traversal_scaling(self, use_iter):
+        if sys.implementation.name != 'cpython':
+            self.skipTest("requires immediate proxy destruction")
+        times = []
+        for depth in (4000, 16000):
+            root = etree.Element('node')
+            parents = [root]
+            for _ in range(depth):
+                parents.append(etree.SubElement(parents[-1], 'node'))
+                # Include a text node before the child element.
+                parents[-2].text = 'text'
+            parents[-1].tag = 'leaf'
+            parents.clear()
+
+            def traverse():
+                node = root
+                if use_iter:
+                    for node in root.iter():
+                        pass
+                else:
+                    for _ in range(depth):
+                        node = node[0]
+                return node
+
+            self.assertEqual(traverse().tag, 'leaf')
+            times.append(self._best_time(traverse))
+
+        # Quadrupling the depth should be much closer to linear than quadratic.
+        self.assertLess(times[1], 8 * times[0], times)
+
+    def test_deep_tree_child_traversal_scaling(self):
+        self._assert_deep_tree_traversal_scaling(use_iter=False)
+
+    def test_deep_tree_iteration_scaling(self):
+        self._assert_deep_tree_traversal_scaling(use_iter=True)
+
+    def _best_time(self, operation):
+        timer = timeit.Timer(operation)
+        # Calibrate each sample to >= 0.2s, then take the best of three samples
+        # to reduce clock quantisation and scheduling noise in the ratios.
+        number, _ = timer.autorange()
+        return min(timer.repeat(repeat=3, number=number)) / number
 
     def test_element_refcycle(self):
         class SubEl(etree.ElementBase):
