@@ -17,7 +17,6 @@ class ExternalDocumentTestCase(HelperTestCase):
         try:
             import ctypes
             from ctypes import pythonapi
-            from ctypes.util import find_library
         except ImportError:
             raise unittest.SkipTest("ctypes support missing")
 
@@ -50,7 +49,7 @@ class ExternalDocumentTestCase(HelperTestCase):
                                            ctypes.c_int, ctypes.py_object,
                                            ctypes.c_void_p)
         self.PyCapsule_Destructor = ctypes.CFUNCTYPE(None, ctypes.py_object)
-        libxml2 = ctypes.CDLL(find_library('xml2'))
+        libxml2 = ctypes.CDLL(etree.__file__)
         self.create_doc = wrap(libxml2.xmlReadMemory, ctypes.c_void_p,
                                ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p,
                                ctypes.c_char_p, ctypes.c_int)
