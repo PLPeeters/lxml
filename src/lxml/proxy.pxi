@@ -148,6 +148,13 @@ cdef int attemptDeallocation(xmlNode* c_node) noexcept:
         return 1
     return 0
 
+cdef inline bint _hasProxyOnNearbyElement(xmlNode* c_node, bint forward) noexcept:
+    if c_node is NULL:
+        return 0
+    if c_node.type == tree.XML_TEXT_NODE or c_node.type == tree.XML_CDATA_SECTION_NODE:
+        c_node = c_node.next if forward else c_node.prev
+    return c_node is not NULL and _isElement(c_node) and hasProxy(c_node)
+
 cdef xmlNode* getDeallocationTop(xmlNode* c_node) noexcept:
     """Return the top of the tree that can be deallocated, or NULL.
     """
@@ -156,6 +163,17 @@ cdef xmlNode* getDeallocationTop(xmlNode* c_node) noexcept:
     if hasProxy(c_node):
         #print "Not freeing: proxies still exist"
         return NULL
+
+    # Live child and next sibling proxies prevent freeing an ancestor.  Check
+    # the first and last child, and the next element sibling, before walking up
+    # the tree.  This keeps deep child and breadth-first sibling traversal
+    # linear when newly created proxies replace their parents.  Skip at most
+    # one text node per probe, keeping these checks bounded.
+    if (_hasProxyOnNearbyElement(c_node.children, True) or
+            _hasProxyOnNearbyElement(c_node.last, False) or
+            _hasProxyOnNearbyElement(c_node.next, True)):
+        return NULL
+
     while c_node.parent is not NULL:
         c_node = c_node.parent
         #print "checking:", c_current.type
