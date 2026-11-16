@@ -154,7 +154,6 @@ cdef inline bint _hasProxyOnNearbyElement(xmlNode* c_node, bint forward) noexcep
     if c_node.type == tree.XML_TEXT_NODE or c_node.type == tree.XML_CDATA_SECTION_NODE:
         c_node = c_node.next if forward else c_node.prev
     return c_node is not NULL and _isElement(c_node) and hasProxy(c_node)
-
 cdef xmlNode* getDeallocationTop(xmlNode* c_node) noexcept:
     """Return the top of the tree that can be deallocated, or NULL.
     """
